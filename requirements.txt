@@ -1,4 +1,6 @@
 Flask
-SQLAlchemy
+Flask-SQLAlchemy
 pillow
 pytesseract
+opencv-python
+numpy

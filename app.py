@@ -1,27 +1,23 @@
-# app.py
 from flask import Flask, request, jsonify, render_template
 import os
 from datetime import datetime
+
 from models import db, Receipt, Expense, Recipe, DietPlan
-from ocr import processar_tiquet, parsear_text_tiquet
+from ocr import processar_tiquet, extract_items_from_image
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'  # Es pot canviar per PostgreSQL, MongoDB, etc.
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
-
-# Crea la base de dades (si encara no existeix)
 with app.app_context():
     db.create_all()
 
-### RUTES WEB BÀSIQUES
 @app.route('/')
 def index():
     return render_template('index.html')
 
-### Endpoint per pujar i processar un tiquet
 @app.route('/upload_tiquet', methods=['POST'])
 def upload_tiquet():
     if 'imatge' not in request.files:
@@ -30,38 +26,30 @@ def upload_tiquet():
     if file.filename == '':
         return jsonify({'error': 'No s\'ha seleccionat cap fitxer'}), 400
 
-    # Desa el fitxer
     filename = file.filename
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     file.save(file_path)
 
-    # Processa l'OCR
+    # Text sencer (pot ser útil per revisió)
     text = processar_tiquet(file_path)
-    
-    # Exemple: obtenim la llista d'ítems a partir del text
-    expenses_list = parsear_text_tiquet(text)
-    
-    # Aquí s'estableixen valors per defecte (hauràs d'extreure'ls realment del text)
+    # Items detectats
+    expenses_list = extract_items_from_image(file_path)
+
     total = sum(item['preu'] for item in expenses_list) if expenses_list else 0.0
     data_actual = datetime.today().date()
-    
-    # Desa el tiquet a la base de dades
+
     receipt = Receipt(data=data_actual, total=total, text_tiquet=text, imatge=filename)
     db.session.add(receipt)
-    db.session.commit()  # Per obtenir l'ID del tiquet
-    
-    # Desa cada ítem (expense) associat al tiquet
+    db.session.commit()
+
     for exp in expenses_list:
-        expense = Expense(
-            receipt_id=receipt.id,
-            nom_producte=exp['nom_producte'],
-            preu=exp['preu'],
-            quantitat=1  # Valor per defecte; es pot modificar segons el parseig
-        )
+        expense = Expense(receipt_id=receipt.id,
+                          nom_producte=exp['nom_producte'],
+                          preu=exp['preu'])
         db.session.add(expense)
     db.session.commit()
-    
+
     return jsonify({
         'message': 'Tiquet processat correctament',
         'receipt_id': receipt.id,
@@ -69,8 +57,7 @@ def upload_tiquet():
         'items': expenses_list
     })
 
-### Endpoints per a Receptes
-# Afegir una recepta
+# Exemple d'endpoints de receptes i pla de dieta (sense canvis)
 @app.route('/api/recipe', methods=['POST'])
 def add_recipe():
     data = request.get_json()
@@ -80,14 +67,13 @@ def add_recipe():
     proteines = data.get('proteines')
     carbohidrats = data.get('carbohidrats')
     greixos = data.get('greixos')
-    
+
     recipe = Recipe(nom=nom, ingredients=ingredients, calories=calories,
                     proteines=proteines, carbohidrats=carbohidrats, greixos=greixos)
     db.session.add(recipe)
     db.session.commit()
     return jsonify({'message': 'Recepta afegida', 'recipe_id': recipe.id})
 
-# Consultar totes les receptes
 @app.route('/api/recipes', methods=['GET'])
 def get_recipes():
     recipes = Recipe.query.all()
@@ -104,23 +90,20 @@ def get_recipes():
         })
     return jsonify(result)
 
-### Endpoint per gestionar un pla de dieta (planificar àpats)
 @app.route('/api/diet_plan', methods=['POST'])
 def add_diet_plan():
     data = request.get_json()
-    data_setmana = data.get('data_setmana')  # Format "YYYY-MM-DD"
-    recepta_ids = data.get('recepta_ids')    # Llista d'identificadors, per exemple: [1, 3, 5]
-    
-    # Converteix la llista d'IDs a una cadena separada per comes
+    data_setmana = data.get('data_setmana')
+    recepta_ids = data.get('recepta_ids')
     recepta_ids_str = ",".join(map(str, recepta_ids))
-    
+
     diet_plan = DietPlan(
         data_setmana=datetime.strptime(data_setmana, "%Y-%m-%d").date(),
         recepta_ids=recepta_ids_str
     )
     db.session.add(diet_plan)
     db.session.commit()
-    
+
     return jsonify({'message': 'Pla de dieta creat', 'diet_plan_id': diet_plan.id})
 
 if __name__ == '__main__':
