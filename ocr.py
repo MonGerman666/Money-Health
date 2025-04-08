@@ -1,15 +1,21 @@
-# ocr.py
 import pytesseract
+
+# Defineix la ruta completa on s'instal·la l'executable de Tesseract
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
+# Ara pots processar les imatges sense problemes
 from PIL import Image
-import re
 
 def processar_tiquet(path_imagen):
-    """
-    Rep el camí a una imatge i retorna el text extret utilitzant pytesseract.
-    """
     imatge = Image.open(path_imagen)
-    text = pytesseract.image_to_string(imatge, lang="cat")  # Usa 'cat' per català o actualitza al llenguatge que necessitis
+    text = pytesseract.image_to_string(imatge, lang="cat")  # Ajusta el llenguatge si cal
     return text
+
+# Exemple de comprovació
+if __name__ == '__main__':
+    resultat = processar_tiquet('exemple_tiquet.jpg')
+    print(resultat)
+
 
 def parsear_text_tiquet(text):
     """
